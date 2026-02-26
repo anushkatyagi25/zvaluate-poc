@@ -2,11 +2,11 @@ import { io, Socket } from "socket.io-client";
 
 export type SocketState = "connecting" | "connected" | "error";
 
-export type QueryStartedPayload = { message_id: string };
-export type ThinkingPayload = { status?: string };
-export type ResponseChunkPayload = { message_id: string; content: string };
-export type QueryCompletePayload = { message_id: string; response: string };
-export type QueryErrorPayload = { message_id?: string; message: string };
+export type QueryStartedPayload = { message_id: string; chat_id: string };
+export type ThinkingPayload = { chat_id?: string; status?: string };
+export type ResponseChunkPayload = { message_id: string; chat_id: string; content: string };
+export type QueryCompletePayload = { message_id: string; chat_id: string; response: string; timestamp?: string };
+export type QueryErrorPayload = { message_id?: string; chat_id?: string; message: string };
 
 const wsUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
@@ -41,8 +41,8 @@ export class ChatSocketService {
     this.socket.on("query_error", handlers.onQueryError);
   }
 
-  sendMessage(message: string) {
-    this.socket?.emit("message", { message });
+  sendMessage(message: string, chatId: string) {
+    this.socket?.emit("message", { message, chat_id: chatId });
   }
 
   disconnect() {
