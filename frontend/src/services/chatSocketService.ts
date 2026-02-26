@@ -7,6 +7,13 @@ export type ThinkingPayload = { chat_id?: string; status?: string };
 export type ResponseChunkPayload = { message_id: string; chat_id: string; content: string };
 export type QueryCompletePayload = { message_id: string; chat_id: string; response: string; timestamp?: string };
 export type QueryErrorPayload = { message_id?: string; chat_id?: string; message: string };
+export type SendMessagePayload = {
+  chatId: string;
+  message: string;
+  datasetId: string;
+  datasetName: string;
+  datasetUrl: string;
+};
 
 const wsUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 
@@ -41,8 +48,14 @@ export class ChatSocketService {
     this.socket.on("query_error", handlers.onQueryError);
   }
 
-  sendMessage(message: string, chatId: string) {
-    this.socket?.emit("message", { message, chat_id: chatId });
+  sendMessage(payload: SendMessagePayload) {
+    this.socket?.emit("message", {
+      message: payload.message,
+      chat_id: payload.chatId,
+      dataset_id: payload.datasetId,
+      dataset_name: payload.datasetName,
+      dataset_url: payload.datasetUrl,
+    });
   }
 
   disconnect() {

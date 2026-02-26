@@ -5,6 +5,7 @@ from typing import Any
 import socketio
 
 from chats.repository import append_chat_message, get_chat
+from services.dataset_schema_service import fetch_dataset_schema
 from services.llm_service import LLMConfigurationError, LLMResponseError, generate_chat_response
 
 
@@ -16,16 +17,24 @@ def _resolve_error_message(exc: Exception) -> str:
     return "Failed to process your request"
 
 
-def _validate_message_payload(data: dict[str, Any]) -> tuple[str, str]:
+def _validate_message_payload(data: dict[str, Any]) -> tuple[str, str, str, str]:
     chat_id = (data or {}).get("chat_id", "")
     message_text = (data or {}).get("message", "")
+    dataset_name = (data or {}).get("dataset_name", "")
+    dataset_url = (data or {}).get("dataset_url", "")
 
     if not isinstance(chat_id, str) or not chat_id.strip():
         raise ValueError("chat_id is required")
     if not isinstance(message_text, str) or not message_text.strip():
         raise RuntimeError("Message is required")
+    if not isinstance(dataset_url, str) or not dataset_url.strip():
+        raise RuntimeError("Selected dataset URL is required")
 
-    return chat_id.strip(), message_text.strip()
+    safe_dataset_name = dataset_name.strip() if isinstance(dataset_name, str) else "Selected dataset"
+    if not safe_dataset_name:
+        safe_dataset_name = "Selected dataset"
+
+    return chat_id.strip(), message_text.strip(), safe_dataset_name, dataset_url.strip()
 
 
 async def _emit_streamed_response(
@@ -64,7 +73,7 @@ def register_chat_events(sio: socketio.AsyncServer) -> None:
         message_id = str(uuid.uuid4())
 
         try:
-            chat_id, message_text = _validate_message_payload(data)
+            chat_id, message_text, dataset_name, dataset_url = _validate_message_payload(data)
         except ValueError as exc:
             await sio.emit(
                 "query_error",
@@ -86,6 +95,20 @@ def register_chat_events(sio: socketio.AsyncServer) -> None:
                 raise ValueError("Chat not found")
 
             await sio.emit("query_started", {"message_id": message_id, "chat_id": chat_id}, to=sid)
+            await sio.emit(
+                "thinking",
+                {
+                    "message_id": message_id,
+                    "chat_id": chat_id,
+                    "status": f"Loading schema for {dataset_name}",
+                },
+                to=sid,
+            )
+
+            dataset_schema = await asyncio.to_thread(fetch_dataset_schema, dataset_url)
+            # Schema is intentionally fetched and validated here; prompt integration will be added later.
+            _ = dataset_schema
+
             await sio.emit(
                 "thinking",
                 {"message_id": message_id, "chat_id": chat_id, "status": "Generating response with LLM"},

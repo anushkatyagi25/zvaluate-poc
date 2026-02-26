@@ -25,6 +25,9 @@ def _get_int_env(key: str, default: int) -> int:
 
 
 MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "zvaluate_db")
+ARGUS_DB_NAME = os.getenv("ARGUS_DB_NAME", "argus-qa")
+ARGUS_DATASETS_COLLECTION = os.getenv("ARGUS_DATASETS_COLLECTION", "datasets")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_TEMPERATURE = _get_float_env("OPENAI_TEMPERATURE", 0.2)

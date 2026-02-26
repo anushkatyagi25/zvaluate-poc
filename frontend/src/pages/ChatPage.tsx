@@ -15,6 +15,7 @@ import {
   type ResponseChunkPayload,
   type SocketState,
 } from "../services/chatSocketService";
+import { fetchDatasets, type DatasetOption } from "../services/datasetsApiService";
 
 type Role = "user" | "assistant";
 
@@ -111,6 +112,10 @@ export function ChatPage() {
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [datasets, setDatasets] = useState<DatasetOption[]>([]);
+  const [datasetsLoading, setDatasetsLoading] = useState(true);
+  const [datasetsError, setDatasetsError] = useState("");
+  const [selectedDatasetId, setSelectedDatasetId] = useState("");
 
   const activeChatIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -129,6 +134,11 @@ export function ChatPage() {
 
     return chats.filter((chat) => getChatTitle(chat).toLowerCase().includes(query));
   }, [chats, searchText]);
+
+  const selectedDataset = useMemo(
+    () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
+    [datasets, selectedDatasetId]
+  );
 
   const refreshChats = useCallback(async (preferredChatId?: string) => {
     const chatList = await listChats();
@@ -153,6 +163,34 @@ export function ChatPage() {
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinkingText]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDatasets = async () => {
+      try {
+        setDatasetsLoading(true);
+        setDatasetsError("");
+        const options = await fetchDatasets();
+        if (!isMounted) return;
+        setDatasets(options);
+      } catch (error) {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : "Failed to load datasets";
+        setDatasetsError(message);
+      } finally {
+        if (isMounted) {
+          setDatasetsLoading(false);
+        }
+      }
+    };
+
+    void loadDatasets();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     chatSocketService.connect({
@@ -344,12 +382,18 @@ export function ChatPage() {
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed || !activeChatId) {
+    if (!trimmed || !activeChatId || !selectedDataset) {
       return;
     }
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: trimmed }]);
-    chatSocketService.sendMessage(trimmed, activeChatId);
+    chatSocketService.sendMessage({
+      chatId: activeChatId,
+      message: trimmed,
+      datasetId: selectedDataset.id,
+      datasetName: selectedDataset.name,
+      datasetUrl: selectedDataset.url,
+    });
     setInput("");
   };
 
@@ -411,7 +455,7 @@ export function ChatPage() {
 
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="border-b border-[#e4e7f0] bg-white px-5 py-5 md:px-8">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-extrabold tracking-tight text-[#17233d] md:text-4xl">AI Chat Assistant</h1>
                 <p className="mt-1 text-base text-[#6c7691] md:text-lg">Query your datasets and manage workflows with AI</p>
@@ -523,24 +567,40 @@ export function ChatPage() {
               <div className="border-t border-[#e4e7f0] bg-[#f8f9fc] px-4 py-5 md:px-8">
                 <form className="mx-auto w-full max-w-[760px]" onSubmit={handleSubmit}>
                   <div className="flex items-center gap-3 rounded-xl border border-[#d6dceb] bg-white px-3 py-2.5">
-                    <button className="text-xl text-[#8d96ac]" type="button">
-                      ⎔
-                    </button>
+                    <select
+                      id="dataset-select"
+                      value={selectedDatasetId}
+                      onChange={(event) => setSelectedDatasetId(event.target.value)}
+                      disabled={datasetsLoading || !!datasetsError}
+                      className="h-8 min-w-[150px] rounded-md border border-[#cfd6ea] bg-[#f7f9ff] px-2 text-xs text-[#24365f] outline-none transition focus:border-[#1f4bc0] disabled:cursor-not-allowed disabled:bg-[#f3f5fb] disabled:text-[#9aa3ba]"
+                    >
+                      <option value="">select dataset</option>
+                      {datasetsLoading && <option value="">Loading datasets...</option>}
+                      {!datasetsLoading && datasetsError && <option value="">Failed to load datasets</option>}
+                      {!datasetsLoading &&
+                        !datasetsError &&
+                        datasets.map((dataset) => (
+                          <option key={dataset.id} value={dataset.id}>
+                            {dataset.name}
+                          </option>
+                        ))}
+                    </select>
                     <input
                       value={input}
                       onChange={(event) => setInput(event.target.value)}
-                      placeholder="Ask me anything about your datasets..."
+                      placeholder="ask me anything"
                       className="h-10 flex-1 bg-transparent text-base text-[#3b4867] outline-none placeholder:text-[#9aa3ba]"
                     />
                     <button
                       type="submit"
-                      disabled={!input.trim() || socketState !== "connected" || !activeChatId}
+                      disabled={!input.trim() || socketState !== "connected" || !activeChatId || !selectedDataset}
                       className="flex h-9 w-9 items-center justify-center rounded-md bg-[#1f3f93] text-base text-white transition disabled:cursor-not-allowed disabled:bg-[#9ca9ce]"
                     >
                       ➤
                     </button>
                   </div>
                 </form>
+                {datasetsError && <p className="mx-auto mt-2 w-full max-w-[960px] text-sm text-[#b63b4d]">{datasetsError}</p>}
                 <p className="mt-3 text-center text-sm text-[#9ca3b8]">
                   AI Assistant can make mistakes. Please verify important data facts.
                 </p>
