@@ -5,8 +5,11 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from core.logging_config import get_logger
+
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024
 CSV_SAMPLE_ROWS = 50
+logger = get_logger(__name__)
 
 
 def _looks_like_int(value: str) -> bool:
@@ -130,27 +133,44 @@ def _parse_json_schema(content: bytes) -> dict[str, Any]:
 
 
 def fetch_dataset_schema(dataset_url: str) -> dict[str, Any]:
+    logger.info("Dataset schema fetch started url=%s", dataset_url)
     parsed = urlparse(dataset_url)
     if parsed.scheme not in {"http", "https"}:
+        logger.warning("Dataset schema fetch failed invalid scheme url=%s", dataset_url)
         raise ValueError("Dataset URL must be an http(s) link")
 
     with urlopen(dataset_url, timeout=20) as response:
         content_type = response.headers.get("Content-Type", "").lower()
         content = response.read(MAX_DOWNLOAD_BYTES)
+    logger.info(
+        "Dataset downloaded bytes=%s content_type=%s path=%s",
+        len(content),
+        content_type,
+        parsed.path,
+    )
 
     path = parsed.path.lower()
     is_csv = path.endswith(".csv") or "text/csv" in content_type or "application/csv" in content_type
     is_json = path.endswith(".json") or "application/json" in content_type or "text/json" in content_type
 
     if is_csv:
-        return _parse_csv_schema(content)
+        schema = _parse_csv_schema(content)
+        logger.info("Dataset schema parsed format=csv columns=%s", len(schema.get("columns", [])))
+        return schema
     if is_json:
-        return _parse_json_schema(content)
+        schema = _parse_json_schema(content)
+        logger.info("Dataset schema parsed format=json")
+        return schema
 
     try:
-        return _parse_csv_schema(content)
+        schema = _parse_csv_schema(content)
+        logger.info("Dataset schema parsed via fallback format=csv columns=%s", len(schema.get("columns", [])))
+        return schema
     except Exception:
         try:
-            return _parse_json_schema(content)
+            schema = _parse_json_schema(content)
+            logger.info("Dataset schema parsed via fallback format=json")
+            return schema
         except Exception as exc:
+            logger.exception("Dataset schema fetch failed unsupported format url=%s", dataset_url)
             raise ValueError("Unsupported dataset format. Expected CSV or JSON.") from exc

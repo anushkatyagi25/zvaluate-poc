@@ -55,3 +55,10 @@ export async function getChat(chatId: string): Promise<ChatThread> {
   const payload = await readJson<{ chat: ChatThread }>(response);
   return payload.chat;
 }
+
+export async function deleteChat(chatId: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/api/chats/${encodeURIComponent(chatId)}`, {
+    method: "DELETE",
+  });
+  await readJson<{ deleted: boolean; chat_id: string }>(response);
+}

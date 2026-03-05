@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createChat,
+  deleteChat,
   getChat,
   listChats,
   type ChatSummary,
@@ -112,6 +113,9 @@ export function ChatPage() {
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
+  const [chatToDelete, setChatToDelete] = useState<ChatSummary | null>(null);
+  const [chatListError, setChatListError] = useState("");
   const [datasets, setDatasets] = useState<DatasetOption[]>([]);
   const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [datasetsError, setDatasetsError] = useState("");
@@ -424,6 +428,40 @@ export function ChatPage() {
     }
   };
 
+  const handleDeleteClick = (chat: ChatSummary) => {
+    if (deletingChatId) {
+      return;
+    }
+    setChatListError("");
+    setChatToDelete(chat);
+  };
+
+  const handleDeleteChat = async () => {
+    if (!chatToDelete || deletingChatId) {
+      return;
+    }
+
+    const chatId = chatToDelete.chat_id;
+    setDeletingChatId(chatId);
+    setChatListError("");
+    setThinkingText("");
+
+    try {
+      const deletedActiveChat = activeChatIdRef.current === chatId;
+      await deleteChat(chatId);
+      await refreshChats();
+      if (deletedActiveChat) {
+        setMessages([]);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete chat";
+      setChatListError(message);
+    } finally {
+      setDeletingChatId(null);
+      setChatToDelete(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f6f7fb] text-[#1f2a44]">
       <header className="flex h-16 items-center justify-between border-b border-[#e4e7f0] bg-white px-4 md:px-8">
@@ -481,6 +519,7 @@ export function ChatPage() {
                 />
                 <span className="text-sm text-[#a0a8bf]">⌕</span>
               </div>
+              {chatListError && <p className="mt-2 px-2.5 text-xs text-[#b63b4d]">{chatListError}</p>}
 
               <div className="mt-3 space-y-1.5">
                 {isLoadingChats && <p className="px-2.5 py-2 text-xs text-[#8e98b0]">Loading chats...</p>}
@@ -491,21 +530,45 @@ export function ChatPage() {
 
                 {filteredChats.map((chat) => {
                   const isActive = chat.chat_id === activeChatId;
+                  const isDeleting = deletingChatId === chat.chat_id;
                   return (
-                    <button
+                    <div
                       key={chat.chat_id}
-                      type="button"
-                      onClick={() => {
-                        setActiveChatId(chat.chat_id);
-                        setThinkingText("");
-                      }}
-                      className={`w-full rounded-md p-2.5 text-left ${
+                      className={`flex items-center gap-1 rounded-md ${
                         isActive ? "border-l-4 border-[#1f4bc0] bg-[#e8edf9]" : "hover:bg-[#edf1fb]"
                       }`}
                     >
-                      <p className="text-sm font-medium text-[#24365f]">{getChatTitle(chat)}</p>
-                      <p className="mt-1 text-xs text-[#8e98b0]">{formatRelativeDate(chat.updated_at)}</p>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveChatId(chat.chat_id);
+                          setThinkingText("");
+                        }}
+                        className="min-w-0 flex-1 p-2.5 text-left"
+                      >
+                        <p className="truncate text-sm font-medium text-[#24365f]">{getChatTitle(chat)}</p>
+                        <p className="mt-1 text-xs text-[#8e98b0]">{formatRelativeDate(chat.updated_at)}</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteClick(chat)}
+                        disabled={!!deletingChatId}
+                        aria-label={`Delete ${getChatTitle(chat)}`}
+                        className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded text-[#cf3d4c] transition hover:bg-[#fdecef] hover:text-[#b92736] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isDeleting ? (
+                          "…"
+                        ) : (
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v6" />
+                            <path d="M14 11v6" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -533,7 +596,7 @@ export function ChatPage() {
                         </span>
                       )}
                       <div
-                        className={`max-w-[85%] rounded-xl border px-4 py-3 text-[15px] leading-relaxed md:max-w-[78%] md:text-base ${
+                        className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl border px-4 py-3 text-[15px] leading-relaxed md:max-w-[78%] md:text-base ${
                           message.role === "assistant"
                             ? "border-[#dfe3ef] bg-[#f1f3f8] text-[#28354f]"
                             : "border-[#dbe0ec] bg-white text-[#263451]"
@@ -613,6 +676,35 @@ export function ChatPage() {
       <div className="fixed bottom-4 right-4 rounded-md bg-white px-3 py-2 text-sm text-[#66708b] shadow">
         {connectedLabel}
       </div>
+
+      {chatToDelete && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#0c1530]/45 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#e2e6f2] bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-[#1f2a44]">Delete Chat</h3>
+            <p className="mt-2 text-sm text-[#5f6986]">
+              Are you sure you want to delete &quot;{getChatTitle(chatToDelete)}&quot;? This action cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setChatToDelete(null)}
+                disabled={!!deletingChatId}
+                className="rounded-md border border-[#d4d9e8] px-3 py-2 text-sm font-medium text-[#4f5b79] transition hover:bg-[#f6f8fe] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteChat()}
+                disabled={!!deletingChatId}
+                className="rounded-md bg-[#cf3d4c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#b92d3b] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingChatId ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

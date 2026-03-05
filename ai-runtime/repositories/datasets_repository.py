@@ -2,6 +2,9 @@ from typing import Any
 
 from core.config import ARGUS_DATASETS_COLLECTION, ARGUS_DB_NAME
 from core.database import get_named_db
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def _build_dataset_name(document: dict[str, Any]) -> str:
@@ -21,6 +24,11 @@ def _build_dataset_name(document: dict[str, Any]) -> str:
 
 
 def list_datasets() -> list[dict[str, str]]:
+    logger.info(
+        "Repository list_datasets started db=%s collection=%s",
+        ARGUS_DB_NAME,
+        ARGUS_DATASETS_COLLECTION,
+    )
     db = get_named_db(ARGUS_DB_NAME)
     cursor = db[ARGUS_DATASETS_COLLECTION].find(
         {},
@@ -46,4 +54,5 @@ def list_datasets() -> list[dict[str, str]]:
         )
 
     datasets.sort(key=lambda item: item["name"].lower())
+    logger.info("Repository list_datasets completed count=%s", len(datasets))
     return datasets
