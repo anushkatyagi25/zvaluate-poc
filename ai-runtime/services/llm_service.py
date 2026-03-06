@@ -84,11 +84,6 @@ def _normalize_llm_output(raw_content: str) -> str:
             normalized_error = json.dumps({"error": error_message.strip()}, ensure_ascii=True)
             logger.info("LLM output normalized mode=error_json")
             return normalized_error
-        
-        message_value = parsed_content.get("message")
-        if isinstance(message_value, str) and message_value.strip():
-            logger.info("LLM output normalized mode=message_text")
-            return message_value.strip()
 
         status_value = parsed_content.get("status")
         if status_value in {"success", "out_of_scope"}:
@@ -105,6 +100,21 @@ def _normalize_llm_output(raw_content: str) -> str:
             normalized_response = json.dumps(response_value, indent=2, ensure_ascii=True)
             logger.info("LLM output normalized mode=legacy_response_json")
             return normalized_response
+
+        message_value = parsed_content.get("message")
+        if isinstance(message_value, str) and message_value.strip():
+            questions_value = parsed_content.get("questions")
+            if isinstance(questions_value, list):
+                questions = [str(item).strip() for item in questions_value if str(item).strip()]
+                if questions:
+                    message_with_questions = "\n\n".join(
+                        [message_value.strip(), "\n".join(f"{index}. {question}" for index, question in enumerate(questions, start=1))]
+                    )
+                    logger.info("LLM output normalized mode=message_with_questions count=%s", len(questions))
+                    return message_with_questions
+
+            logger.info("LLM output normalized mode=message_text")
+            return message_value.strip()
 
     normalized_content = json.dumps(parsed_content, indent=2, ensure_ascii=True)
     logger.info("LLM output normalized mode=full_json")

@@ -205,8 +205,6 @@ export function ChatPage() {
         if (data.chat_id !== activeChatIdRef.current) {
           return;
         }
-
-        setMessages((prev) => [...prev, { id: data.message_id, role: "assistant", content: "", isStreaming: true }]);
       },
       onThinking: (data) => {
         if (data.chat_id && data.chat_id !== activeChatIdRef.current) {
@@ -221,23 +219,33 @@ export function ChatPage() {
         }
 
         setThinkingText("");
-        setMessages((prev) =>
-          prev.map((message) =>
+        setMessages((prev) => {
+          const existingIndex = prev.findIndex((message) => message.id === data.message_id);
+          if (existingIndex === -1) {
+            return [...prev, { id: data.message_id, role: "assistant", content: data.content, isStreaming: true }];
+          }
+
+          return prev.map((message) =>
             message.id === data.message_id
               ? { ...message, content: message.content + data.content, isStreaming: true }
               : message
-          )
-        );
+          );
+        });
       },
       onQueryComplete: (data) => {
         setThinkingText("");
 
         if (data.chat_id === activeChatIdRef.current) {
-          setMessages((prev) =>
-            prev.map((message) =>
+          setMessages((prev) => {
+            const existingIndex = prev.findIndex((message) => message.id === data.message_id);
+            if (existingIndex === -1) {
+              return [...prev, { id: data.message_id, role: "assistant", content: data.response, isStreaming: false }];
+            }
+
+            return prev.map((message) =>
               message.id === data.message_id ? { ...message, content: data.response, isStreaming: false } : message
-            )
-          );
+            );
+          });
         }
 
         void refreshChats(data.chat_id);
@@ -259,7 +267,7 @@ export function ChatPage() {
                 {
                   id: messageId,
                   role: "assistant",
-                  content: `Error: ${data.message}`,
+                  content: data.message,
                   isStreaming: false,
                 },
               ];
@@ -267,7 +275,7 @@ export function ChatPage() {
 
             return prev.map((message) =>
               message.id === messageId
-                ? { ...message, content: `Error: ${data.message}`, isStreaming: false }
+                ? { ...message, content: data.message, isStreaming: false }
                 : message
             );
           });
@@ -279,7 +287,7 @@ export function ChatPage() {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: `Error: ${data.message}`,
+            content: data.message,
           },
         ]);
       },
@@ -509,7 +517,7 @@ export function ChatPage() {
           </div>
 
           <div className="flex min-h-0 flex-1">
-            <aside className="hidden w-[260px] border-r border-[#e4e7f0] bg-[#f8f9fd] p-3 lg:block xl:w-[272px]">
+            <aside className="hidden w-[260px] min-h-0 flex-col border-r border-[#e4e7f0] bg-[#f8f9fd] p-3 lg:flex xl:w-[272px]">
               <div className="flex h-10 items-center rounded-md border border-[#d7dceb] bg-white px-2.5">
                 <input
                   value={searchText}
@@ -521,7 +529,7 @@ export function ChatPage() {
               </div>
               {chatListError && <p className="mt-2 px-2.5 text-xs text-[#b63b4d]">{chatListError}</p>}
 
-              <div className="mt-3 space-y-1.5">
+              <div className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
                 {isLoadingChats && <p className="px-2.5 py-2 text-xs text-[#8e98b0]">Loading chats...</p>}
 
                 {!isLoadingChats && filteredChats.length === 0 && (
